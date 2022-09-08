@@ -29,6 +29,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
+starlette = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
