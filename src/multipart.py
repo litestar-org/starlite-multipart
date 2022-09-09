@@ -1,5 +1,5 @@
-"""The contents of this file were adapted from https://github.com/pallets/werkz
-eug/blob/main/src/werkzeug/sansio/multipart.py.
+"""The contents of this file incorporate code adapted from
+https://github.com/pallets/werkzeug.
 
 Copyright 2007 Pallets
 
@@ -32,70 +32,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 import re
-from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, cast
+from typing import Optional, cast
 
 from src.constants import BLANK_LINE_RE, LINE_BREAK, SEARCH_BUFFER_LENGTH
-from src.header_parser import parse_options_header
-from src.utils import get_buffer_last_newline, parse_headers
+from src.events import (
+    DataEvent,
+    EpilogueEvent,
+    FieldEvent,
+    FileEvent,
+    MultipartMessageEvent,
+    PreambleEvent,
+)
+from src.utils import get_buffer_last_newline, parse_headers, parse_options_header
 
 
 class RequestEntityTooLarge(Exception):
     pass
-
-
-@dataclass
-class Event:
-    __slots__ = ()
-
-
-@dataclass
-class Preamble(Event):
-    __slots__ = ("data",)
-
-    data: bytes
-
-
-@dataclass
-class Field(Event):
-    __slots__ = (
-        "name",
-        "headers",
-    )
-
-    name: str
-    headers: Dict[str, str]
-
-
-@dataclass
-class File(Event):
-    __slots__ = (
-        "name",
-        "headers",
-        "filename",
-    )
-
-    name: str
-    filename: str
-    headers: Dict[str, str]
-
-
-@dataclass
-class Data(Event):
-    __slots__ = (
-        "data",
-        "more_data",
-    )
-
-    data: bytes
-    more_data: bool
-
-
-@dataclass
-class Epilogue(Event):
-    __slots__ = ("data",)
-    data: bytes
 
 
 class State(str, Enum):
@@ -107,6 +60,16 @@ class State(str, Enum):
 
 
 class MultipartDecoder:
+    __slots__ = (
+        "buffer",
+        "max_size",
+        "processing_stage",
+        "message_boundary",
+        "search_position",
+        "preamble_re",
+        "boundary_re",
+    )
+
     def __init__(
         self,
         boundary: bytes,
@@ -115,7 +78,7 @@ class MultipartDecoder:
         """A decoder for multipart messages.
 
         Args:
-            boundary: The message boundary as specified by [RFC7578][https://www.rfc-editor.org/rfc/rfc7578]
+            boundary: The message message_boundary as specified by [RFC7578][https://www.rfc-editor.org/rfc/rfc7578]
             max_size: Maximum number of bytes allowed for the message.
         """
         self.buffer = bytearray()
@@ -141,7 +104,7 @@ class MultipartDecoder:
                 raise RequestEntityTooLarge()
             self.buffer.extend(data)
 
-    def _process_preamble(self) -> Optional[Event]:
+    def _process_preamble(self) -> Optional[MultipartMessageEvent]:
         match = self.preamble_re.search(self.buffer, self.search_position)
         if match is not None:
             if match.group(1).startswith(b"--"):
@@ -151,10 +114,10 @@ class MultipartDecoder:
 
             data = bytes(self.buffer[: match.start()])
             del self.buffer[: match.end()]
-            return Preamble(data=data)
+            return PreambleEvent(data=data)
         return None
 
-    def _process_part(self) -> Optional[Event]:
+    def _process_part(self) -> Optional[MultipartMessageEvent]:
         match = BLANK_LINE_RE.search(self.buffer, self.search_position)
         if match is not None:
             headers = parse_headers(self.buffer[: match.start()])
@@ -166,18 +129,18 @@ class MultipartDecoder:
 
             _, extra = parse_options_header(content_disposition_header)
             if "filename" in extra:
-                return File(
+                return FileEvent(
                     filename=extra["filename"],
                     headers=headers,
                     name=extra.get("name", ""),
                 )
-            return Field(
+            return FieldEvent(
                 headers=headers,
                 name=extra.get("name", ""),
             )
         return None
 
-    def _process_data(self) -> Optional[Event]:
+    def _process_data(self) -> Optional[MultipartMessageEvent]:
         match = self.boundary_re.search(self.buffer) if self.buffer.find(b"--" + self.message_boundary) != -1 else None
         if match is not None:
             if match.group(1).startswith(b"--"):
@@ -188,21 +151,20 @@ class MultipartDecoder:
             more_data = False
             del self.buffer[: match.end()]
         else:
-            # There is no 'is_finished' message_boundary in the buffer, but there might be
-            # a partial message_boundary at the end.
             data_length = get_buffer_last_newline(self.buffer)
             data = bytes(self.buffer[:data_length])
             more_data = True
             del self.buffer[:data_length]
-        return Data(data=data, more_data=more_data) if data or not more_data else None
+        return DataEvent(data=data, more_data=more_data) if data or not more_data else None
 
-    def next_event(self) -> Optional[Event]:
-        """Processes the data according the parser's state. The state is
-        updated according to the parser's state machine logic. Thus calling
-        this method updates the state as well.
+    def next_event(self) -> Optional[MultipartMessageEvent]:
+        """Processes the data according the parser's processing_stage. The
+        processing_stage is updated according to the parser's processing_stage
+        machine logic. Thus calling this method updates the processing_stage as
+        well.
 
         Returns:
-            An optional event instance, depending on the state of the message processing.
+            An optional event instance, depending on the processing_stage of the message processing.
         """
         if self.processing_stage == State.COMPLETE:
             return None
@@ -221,27 +183,31 @@ class MultipartDecoder:
                 self.search_position = 0
                 self.processing_stage = State.DATA
             else:
-                # Update the search start position to be equal to the
-                # current buffer length (already searched) minus a
-                # safe buffer for part of the search target.
                 self.search_position = max(0, len(self.buffer) - SEARCH_BUFFER_LENGTH)
             return event
 
         if self.processing_stage == State.DATA:
             return self._process_data()
 
-        event = Epilogue(data=bytes(self.buffer))
+        event = EpilogueEvent(data=bytes(self.buffer))
         del self.buffer[:]
         self.processing_stage = State.COMPLETE
         return event
 
 
 class MultipartEncoder:
-    def __init__(self, boundary: bytes) -> None:
-        self.boundary = boundary
-        self.state = State.PREAMBLE
+    __slots__ = ("message_boundary", "processing_stage")
 
-    def send_event(self, event: Event) -> bytes:
+    def __init__(self, message_boundary: bytes) -> None:
+        """Decodes a multipart event into a byte string.
+
+        Args:
+            message_boundary: The message message_boundary.
+        """
+        self.message_boundary = message_boundary
+        self.processing_stage = State.PREAMBLE
+
+    def send_event(self, event: MultipartMessageEvent) -> bytes:
         """Encodes an event into a byte string.
 
         Args:
@@ -250,28 +216,28 @@ class MultipartEncoder:
         Returns:
             An encoded byte string.
         """
-        if isinstance(event, Preamble) and self.state == State.PREAMBLE:
-            self.state = State.PART
+        if isinstance(event, PreambleEvent) and self.processing_stage == State.PREAMBLE:
+            self.processing_stage = State.PART
             return event.data
-        if isinstance(event, (Field, File)) and self.state in {
+        if isinstance(event, (FieldEvent, FileEvent)) and self.processing_stage in {
             State.PREAMBLE,
             State.PART,
             State.DATA,
         }:
-            self.state = State.DATA
-            data = b"\r\n--" + self.boundary + b"\r\n"
+            self.processing_stage = State.DATA
+            data = b"\r\n--" + self.message_boundary + b"\r\n"
             data += b'Content-Disposition: form-data; name="%s"' % event.name.encode("latin-1")
-            if isinstance(event, File):
+            if isinstance(event, FileEvent):
                 data += b'; filename="%s"' % event.filename.encode("latin-1")
             data += b"\r\n"
-            for name, value in cast("Field", event).headers.items():
+            for name, value in cast("FieldEvent", event).headers.items():
                 if name.lower() != "content-disposition":
                     data += f"{name}: {value}\r\n".encode("latin-1")
             data += b"\r\n"
             return data
-        if isinstance(event, Data) and self.state == State.DATA:
+        if isinstance(event, DataEvent) and self.processing_stage == State.DATA:
             return event.data
-        if isinstance(event, Epilogue):
-            self.state = State.COMPLETE
-            return b"\r\n--" + self.boundary + b"--\r\n" + event.data
-        raise ValueError(f"Cannot generate {event} in state: {self.state}")
+        if isinstance(event, EpilogueEvent):
+            self.processing_stage = State.COMPLETE
+            return b"\r\n--" + self.message_boundary + b"--\r\n" + event.data
+        raise ValueError(f"Cannot generate {event} in processing_stage: {self.processing_stage}")

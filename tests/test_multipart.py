@@ -1,12 +1,5 @@
-from src.multipart import (
-    Data,
-    Epilogue,
-    Field,
-    File,
-    MultipartDecoder,
-    MultipartEncoder,
-    Preamble,
-)
+from src import MultipartDecoder, MultipartEncoder
+from src.events import DataEvent, EpilogueEvent, FieldEvent, FileEvent, PreambleEvent
 
 
 def test_decoder_simple() -> None:
@@ -30,22 +23,22 @@ asdasd
     decoder(data)
     decoder(None)
     events = [decoder.next_event()]
-    while not isinstance(events[-1], Epilogue) and len(events) < 6:
+    while not isinstance(events[-1], EpilogueEvent) and len(events) < 6:
         events.append(decoder.next_event())
     assert events == [
-        Preamble(data=b""),
-        Field(
+        PreambleEvent(data=b""),
+        FieldEvent(
             name="fname",
             headers={"Content-Disposition": 'form-data; name="fname"'},
         ),
-        Data(data="ß∑œß∂ƒå∂".encode(), more_data=False),
-        File(
+        DataEvent(data="ß∑œß∂ƒå∂".encode(), more_data=False),
+        FileEvent(
             name="lname",
             filename="bob",
             headers={"Content-Disposition": 'form-data; name="lname"; filename="bob"'},
         ),
-        Data(data=b"asdasd", more_data=False),
-        Epilogue(data=b"    "),
+        DataEvent(data=b"asdasd", more_data=False),
+        EpilogueEvent(data=b"    "),
     ]
     encoder = MultipartEncoder(boundary)
     result = b""
@@ -61,19 +54,19 @@ def test_chunked_boundaries() -> None:
     decoder(b"--")
     assert decoder.next_event() is None
     decoder(b"--message_boundary\r\n")
-    assert isinstance(decoder.next_event(), Preamble)
+    assert isinstance(decoder.next_event(), PreambleEvent)
     decoder(b"Content-Disposition: form-data;")
     assert decoder.next_event() is None
     decoder(b'name="fname"\r\n\r\n')
-    assert isinstance(decoder.next_event(), Field)
+    assert isinstance(decoder.next_event(), FieldEvent)
     decoder(b"longer than the message_boundary")
-    assert isinstance(decoder.next_event(), Data)
+    assert isinstance(decoder.next_event(), DataEvent)
     decoder(b"also longer, but includes a linebreak\r\n--")
-    assert isinstance(decoder.next_event(), Data)
+    assert isinstance(decoder.next_event(), DataEvent)
     assert decoder.next_event() is None
     decoder(b"--message_boundary--\r\n")
     event = decoder.next_event()
-    assert isinstance(event, Data)
+    assert isinstance(event, DataEvent)
     assert not event.more_data
     decoder(None)
-    assert isinstance(decoder.next_event(), Epilogue)
+    assert isinstance(decoder.next_event(), EpilogueEvent)

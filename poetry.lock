@@ -90,7 +90,7 @@ dev = ["flake8", "markdown", "twine", "wheel"]
 [[package]]
 name = "identify"
 version = "2.5.5"
-description = "File identification library for Python"
+description = "FileEvent identification library for Python"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
