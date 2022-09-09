@@ -2,7 +2,7 @@
 max-line-length = 120
 max-complexity = 12
 type-checking-pydantic-enabled = true
-ignore = E501, PT006
+ignore = E501, PT006, E203
 classmethod-decorators =
     classmethod
     validator

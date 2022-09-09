@@ -29,7 +29,6 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-starlette = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
@@ -56,6 +55,7 @@ disable = [
     "missing-class-docstring",
     "missing-module-docstring",
     "too-few-public-methods",
+    "too-many-instance-attributes",
 ]
 enable = "useless-suppression"
 extension-pkg-allow-list = ["pydantic"]

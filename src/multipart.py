@@ -1,11 +1,44 @@
+"""The contents of this file were adapted from https://github.com/pallets/werkz
+eug/blob/main/src/werkzeug/sansio/multipart.py.
+
+Copyright 2007 Pallets
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1.  Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+2.  Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+3.  Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
+
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, cast
 
-from starlette.datastructures import Headers
-
+from src.constants import BLANK_LINE_RE, LINE_BREAK, SEARCH_BUFFER_LENGTH
 from src.header_parser import parse_options_header
+from src.utils import get_buffer_last_newline, parse_headers
 
 
 class RequestEntityTooLarge(Exception):
@@ -32,7 +65,7 @@ class Field(Event):
     )
 
     name: str
-    headers: Headers
+    headers: Dict[str, str]
 
 
 @dataclass
@@ -45,7 +78,7 @@ class File(Event):
 
     name: str
     filename: str
-    headers: Headers
+    headers: Dict[str, str]
 
 
 @dataclass
@@ -73,169 +106,134 @@ class State(str, Enum):
     COMPLETE = "COMPLETE"
 
 
-# Multipart line breaks MUST be CRLF (\r\n) by RFC-7578, except that
-# many implementations break this and either use CR or LF alone.
-LINE_BREAK = b"(?:\r\n|\n|\r)"
-BLANK_LINE_RE = re.compile(b"(?:\r\n\r\n|\r\r|\n\n)", re.MULTILINE)
-LINE_BREAK_RE = re.compile(LINE_BREAK, re.MULTILINE)
-# Header values can be continued via a space or tab after the linebreak, as
-# per RFC2231
-HEADER_CONTINUATION_RE = re.compile(b"%s[ \t]" % LINE_BREAK, re.MULTILINE)
-# This must be long enough to contain any line breaks plus any
-# additional boundary markers (--) such that they will be found in a
-# subsequent search
-SEARCH_EXTRA_LENGTH = 8
-
-
 class MultipartDecoder:
-    """Decodes a multipart message as bytes into Python events.
-
-    The part data is returned as available to allow the caller to save
-    the data from memory to disk, if desired.
-    """
-
     def __init__(
         self,
         boundary: bytes,
-        max_form_memory_size: Optional[int] = None,
+        max_size: Optional[int] = None,
     ) -> None:
-        self.buffer = bytearray()
-        self.complete = False
-        self.max_form_memory_size = max_form_memory_size
-        self.state = State.PREAMBLE
-        self.boundary = boundary
+        """A decoder for multipart messages.
 
-        # The preamble must end with a boundary where the boundary is
-        # prefixed by a line break, RFC2046.
+        Args:
+            boundary: The message boundary as specified by [RFC7578][https://www.rfc-editor.org/rfc/rfc7578]
+            max_size: Maximum number of bytes allowed for the message.
+        """
+        self.buffer = bytearray()
+        self.max_size = max_size
+        self.processing_stage = State.PREAMBLE
+        self.message_boundary = boundary
+        self.search_position = 0
+
+        # The preamble must end with a message_boundary where the message_boundary is prefixed by a line break, RFC2046.
         self.preamble_re = re.compile(
             rb"%s?--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)" % (LINE_BREAK, re.escape(boundary), LINE_BREAK, LINE_BREAK),
             re.MULTILINE,
         )
-        # A boundary must include a line break prefix and suffix, and
-        # may include trailing whitespace.
+        # A message_boundary must include a line break prefix and suffix, and may include trailing whitespace.
         self.boundary_re = re.compile(
             rb"%s--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)" % (LINE_BREAK, re.escape(boundary), LINE_BREAK, LINE_BREAK),
             re.MULTILINE,
         )
-        self._search_position = 0
 
-    def last_newline(self) -> int:
-        try:
-            last_nl = self.buffer.rindex(b"\n")
-        except ValueError:
-            last_nl = len(self.buffer)
-        try:
-            last_cr = self.buffer.rindex(b"\r")
-        except ValueError:
-            last_cr = len(self.buffer)
-
-        return min(last_nl, last_cr)
-
-    def receive_data(self, data: Optional[bytes]) -> None:
-        if data is None:
-            self.complete = True
-        elif self.max_form_memory_size is not None and len(self.buffer) + len(data) > self.max_form_memory_size:
-            raise RequestEntityTooLarge()
-        else:
+    def __call__(self, data: Optional[bytes] = None) -> None:
+        if data:
+            if self.max_size is not None and len(self.buffer) + len(data) > self.max_size:
+                raise RequestEntityTooLarge()
             self.buffer.extend(data)
 
-    def next_event(self) -> Event:
-        event: Optional[Event] = None
-
-        if self.state == State.PREAMBLE:
-            match = self.preamble_re.search(self.buffer, self._search_position)
-            if match is not None:
-                if match.group(1).startswith(b"--"):
-                    self.state = State.EPILOGUE
-                else:
-                    self.state = State.PART
-                data = bytes(self.buffer[: match.start()])
-                del self.buffer[: match.end()]
-                event = Preamble(data=data)
-                self._search_position = 0
+    def _process_preamble(self) -> Optional[Event]:
+        match = self.preamble_re.search(self.buffer, self.search_position)
+        if match is not None:
+            if match.group(1).startswith(b"--"):
+                self.processing_stage = State.EPILOGUE
             else:
-                # Update the search start position to be equal to the
-                # current buffer length (already searched) minus a
-                # safe buffer for part of the search target.
-                self._search_position = max(0, len(self.buffer) - len(self.boundary) - SEARCH_EXTRA_LENGTH)
+                self.processing_stage = State.PART
 
-        elif self.state == State.PART:
-            match = BLANK_LINE_RE.search(self.buffer, self._search_position)
-            if match is not None:
-                headers = self._parse_headers(self.buffer[: match.start()])
-                del self.buffer[: match.end()]
+            data = bytes(self.buffer[: match.start()])
+            del self.buffer[: match.end()]
+            return Preamble(data=data)
+        return None
 
-                content_disposition_header = headers.get("content-disposition")
-                if not content_disposition_header:
-                    raise ValueError("Missing Content-Disposition header")
+    def _process_part(self) -> Optional[Event]:
+        match = BLANK_LINE_RE.search(self.buffer, self.search_position)
+        if match is not None:
+            headers = parse_headers(self.buffer[: match.start()])
+            del self.buffer[: match.end()]
 
-                disposition, extra = parse_options_header(content_disposition_header)
-                name = cast(str, extra.get("name"))
-                filename = extra.get("filename")
-                if filename is not None:
-                    event = File(
-                        filename=filename,
-                        headers=headers,
-                        name=name,
-                    )
-                else:
-                    event = Field(
-                        headers=headers,
-                        name=name,
-                    )
-                self.state = State.DATA
-                self._search_position = 0
+            content_disposition_header = headers.get("Content-Disposition") or headers.get("content-disposition")
+            if not content_disposition_header:
+                raise ValueError("Missing Content-Disposition header")
+
+            _, extra = parse_options_header(content_disposition_header)
+            if "filename" in extra:
+                return File(
+                    filename=extra["filename"],
+                    headers=headers,
+                    name=extra.get("name", ""),
+                )
+            return Field(
+                headers=headers,
+                name=extra.get("name", ""),
+            )
+        return None
+
+    def _process_data(self) -> Optional[Event]:
+        match = self.boundary_re.search(self.buffer) if self.buffer.find(b"--" + self.message_boundary) != -1 else None
+        if match is not None:
+            if match.group(1).startswith(b"--"):
+                self.processing_stage = State.EPILOGUE
             else:
-                # Update the search start position to be equal to the
-                # current buffer length (already searched) minus a
-                # safe buffer for part of the search target.
-                self._search_position = max(0, len(self.buffer) - SEARCH_EXTRA_LENGTH)
-
-        elif self.state == State.DATA:
-            if self.buffer.find(b"--" + self.boundary) == -1:
-                # No complete boundary in the buffer, but there may be
-                # a partial boundary at the end. As the boundary
-                # starts with either a nl or cr find the earliest and
-                # return up to that as data.
-                data_length = del_index = self.last_newline()
-                more_data = True
-            else:
-                match = self.boundary_re.search(self.buffer)
-                if match is not None:
-                    if match.group(1).startswith(b"--"):
-                        self.state = State.EPILOGUE
-                    else:
-                        self.state = State.PART
-                    data_length = match.start()
-                    del_index = match.end()
-                else:
-                    data_length = del_index = self.last_newline()
-                more_data = match is None
-
+                self.processing_stage = State.PART
+            data = bytes(self.buffer[: match.start()])
+            more_data = False
+            del self.buffer[: match.end()]
+        else:
+            # There is no 'is_finished' message_boundary in the buffer, but there might be
+            # a partial message_boundary at the end.
+            data_length = get_buffer_last_newline(self.buffer)
             data = bytes(self.buffer[:data_length])
-            del self.buffer[:del_index]
-            if data or not more_data:
-                event = Data(data=data, more_data=more_data)
+            more_data = True
+            del self.buffer[:data_length]
+        return Data(data=data, more_data=more_data) if data or not more_data else None
 
-        elif self.state == State.EPILOGUE and self.complete:
-            event = Epilogue(data=bytes(self.buffer))
-            del self.buffer[:]
-            self.state = State.COMPLETE
+    def next_event(self) -> Optional[Event]:
+        """Processes the data according the parser's state. The state is
+        updated according to the parser's state machine logic. Thus calling
+        this method updates the state as well.
 
-        if self.complete and event is None:
-            raise ValueError(f"Invalid form-data cannot parse beyond {self.state}")
+        Returns:
+            An optional event instance, depending on the state of the message processing.
+        """
+        if self.processing_stage == State.COMPLETE:
+            return None
 
-        return cast("Event", event)
+        if self.processing_stage == State.PREAMBLE:
+            event = self._process_preamble()
+            if event:
+                self.search_position = 0
+            else:
+                self.search_position = max(0, len(self.buffer) - len(self.message_boundary) - SEARCH_BUFFER_LENGTH)
+            return event
 
-    @staticmethod
-    def _parse_headers(data: bytes) -> Headers:
-        headers: Dict[str, str] = {}
-        # Merge the continued headers into one line
-        data = HEADER_CONTINUATION_RE.sub(b" ", data)
-        # Now there is one header per line
-        for name, value in [line.decode("latin-1").split(":", 1) for line in data.splitlines() if line.strip() != b""]:
-            headers[name.strip()] = value.strip()
-        return Headers(headers)
+        if self.processing_stage == State.PART:
+            event = self._process_part()
+            if event:
+                self.search_position = 0
+                self.processing_stage = State.DATA
+            else:
+                # Update the search start position to be equal to the
+                # current buffer length (already searched) minus a
+                # safe buffer for part of the search target.
+                self.search_position = max(0, len(self.buffer) - SEARCH_BUFFER_LENGTH)
+            return event
+
+        if self.processing_stage == State.DATA:
+            return self._process_data()
+
+        event = Epilogue(data=bytes(self.buffer))
+        del self.buffer[:]
+        self.processing_stage = State.COMPLETE
+        return event
 
 
 class MultipartEncoder:
@@ -244,10 +242,18 @@ class MultipartEncoder:
         self.state = State.PREAMBLE
 
     def send_event(self, event: Event) -> bytes:
+        """Encodes an event into a byte string.
+
+        Args:
+            event: An event instance.
+
+        Returns:
+            An encoded byte string.
+        """
         if isinstance(event, Preamble) and self.state == State.PREAMBLE:
             self.state = State.PART
             return event.data
-        elif isinstance(event, (Field, File)) and self.state in {
+        if isinstance(event, (Field, File)) and self.state in {
             State.PREAMBLE,
             State.PART,
             State.DATA,
@@ -263,10 +269,9 @@ class MultipartEncoder:
                     data += f"{name}: {value}\r\n".encode("latin-1")
             data += b"\r\n"
             return data
-        elif isinstance(event, Data) and self.state == State.DATA:
+        if isinstance(event, Data) and self.state == State.DATA:
             return event.data
-        elif isinstance(event, Epilogue):
+        if isinstance(event, Epilogue):
             self.state = State.COMPLETE
             return b"\r\n--" + self.boundary + b"--\r\n" + event.data
-        else:
-            raise ValueError(f"Cannot generate {event} in state: {self.state}")
+        raise ValueError(f"Cannot generate {event} in state: {self.state}")
