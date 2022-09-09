@@ -1,4 +1,6 @@
-from src.events import (
+from starlite_multipart.decoder import MultipartDecoder, RequestEntityTooLarge
+from starlite_multipart.encoder import MultipartEncoder
+from starlite_multipart.events import (
     DataEvent,
     EpilogueEvent,
     FieldEvent,
@@ -6,8 +8,7 @@ from src.events import (
     MultipartMessageEvent,
     PreambleEvent,
 )
-from src.multipart import MultipartDecoder, MultipartEncoder, RequestEntityTooLarge
-from src.utils import parse_options_header
+from starlite_multipart.utils import parse_options_header
 
 __all__ = [
     "DataEvent",

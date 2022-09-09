@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 import re
+from enum import Enum
 
 LINE_BREAK = b"(?:\r\n|\n|\r)"
 BLANK_LINE_RE = re.compile(b"(?:\r\n\r\n|\r\r|\n\n)", re.MULTILINE)
@@ -70,3 +71,11 @@ OPTION_HEADER_PIECE_RE = re.compile(
     """,
     flags=re.VERBOSE,
 )
+
+
+class State(str, Enum):
+    PREAMBLE = "PREAMBLE"
+    PART = "PART"
+    DATA = "DATA"
+    EPILOGUE = "EPILOGUE"
+    COMPLETE = "COMPLETE"

@@ -34,7 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote_to_bytes
 
-from src.constants import (
+from starlite_multipart.constants import (
     OPTION_HEADER_PIECE_RE,
     OPTION_HEADER_START_MIME_RE,
     RFC2231_HEADER_CONTINUATION_RE,

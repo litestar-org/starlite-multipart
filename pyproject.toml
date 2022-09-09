@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "project-template"
+name = "starlite-multipart"
 version = "1.0.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
 maintainers = []
 license = "MIT"
-keywords = ["starlite"]
+keywords = ["starlite", "multipart", "parser", "decoder", "encoder", "form", "formdata", "multipart/formdata"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
@@ -24,7 +24,7 @@ classifiers = [
 ]
 include = ["CHANGELOG.md"]
 packages = [
-    { include = "src" },
+    { include = "starlite_multipart" },
 ]
 
 [tool.poetry.dependencies]
@@ -58,7 +58,6 @@ disable = [
     "too-many-instance-attributes",
 ]
 enable = "useless-suppression"
-extension-pkg-allow-list = ["pydantic"]
 
 [tool.pylint.REPORTS]
 reports = "no"
@@ -83,5 +82,5 @@ asyncio_mode = "auto"
 all = true
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["starlite_multipart", "tests"]
 exclude = []

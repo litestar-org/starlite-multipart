@@ -1,5 +1,11 @@
-from src import MultipartDecoder, MultipartEncoder
-from src.events import DataEvent, EpilogueEvent, FieldEvent, FileEvent, PreambleEvent
+from starlite_multipart import MultipartDecoder, MultipartEncoder
+from starlite_multipart.events import (
+    DataEvent,
+    EpilogueEvent,
+    FieldEvent,
+    FileEvent,
+    PreambleEvent,
+)
 
 
 def test_decoder_simple() -> None:
