@@ -73,7 +73,7 @@ OPTION_HEADER_PIECE_RE = re.compile(
 )
 
 
-class ProcessingStage(str, Enum):
+class ProcessingStage(Enum):
     PREAMBLE = 1
     PART = 2
     DATA = 3
