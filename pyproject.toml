@@ -29,6 +29,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.7,<4.0"
+anyio = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
@@ -55,6 +56,7 @@ disable = [
     "missing-class-docstring",
     "missing-module-docstring",
     "too-few-public-methods",
+    "too-many-arguments",
     "too-many-instance-attributes",
 ]
 enable = "useless-suppression"

@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from typing import cast
 
-from starlite_multipart.constants import State
+from starlite_multipart.constants import ProcessingStage
 from starlite_multipart.events import (
     DataEvent,
     EpilogueEvent,
@@ -54,7 +54,7 @@ class MultipartEncoder:
             message_boundary: The message message_boundary.
         """
         self.message_boundary = message_boundary
-        self.processing_stage = State.PREAMBLE
+        self.processing_stage = ProcessingStage.PREAMBLE
 
     def send_event(self, event: MultipartMessageEvent) -> bytes:
         """Encodes an event into a byte string.
@@ -65,15 +65,15 @@ class MultipartEncoder:
         Returns:
             An encoded byte string.
         """
-        if isinstance(event, PreambleEvent) and self.processing_stage == State.PREAMBLE:
-            self.processing_stage = State.PART
+        if isinstance(event, PreambleEvent) and self.processing_stage == ProcessingStage.PREAMBLE:
+            self.processing_stage = ProcessingStage.PART
             return event.data
         if isinstance(event, (FieldEvent, FileEvent)) and self.processing_stage in {
-            State.PREAMBLE,
-            State.PART,
-            State.DATA,
+            ProcessingStage.PREAMBLE,
+            ProcessingStage.PART,
+            ProcessingStage.DATA,
         }:
-            self.processing_stage = State.DATA
+            self.processing_stage = ProcessingStage.DATA
             data = b"\r\n--" + self.message_boundary + b"\r\n"
             data += b'Content-Disposition: form-data; name="%s"' % event.name.encode("latin-1")
             if isinstance(event, FileEvent):
@@ -84,9 +84,9 @@ class MultipartEncoder:
                     data += f"{name}: {value}\r\n".encode("latin-1")
             data += b"\r\n"
             return data
-        if isinstance(event, DataEvent) and self.processing_stage == State.DATA:
+        if isinstance(event, DataEvent) and self.processing_stage == ProcessingStage.DATA:
             return event.data
         if isinstance(event, EpilogueEvent):
-            self.processing_stage = State.COMPLETE
+            self.processing_stage = ProcessingStage.COMPLETE
             return b"\r\n--" + self.message_boundary + b"--\r\n" + event.data
         raise ValueError(f"Cannot generate {event} in processing_stage: {self.processing_stage}")

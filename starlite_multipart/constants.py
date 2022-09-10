@@ -73,9 +73,9 @@ OPTION_HEADER_PIECE_RE = re.compile(
 )
 
 
-class State(str, Enum):
-    PREAMBLE = "PREAMBLE"
-    PART = "PART"
-    DATA = "DATA"
-    EPILOGUE = "EPILOGUE"
-    COMPLETE = "COMPLETE"
+class ProcessingStage(str, Enum):
+    PREAMBLE = 1
+    PART = 2
+    DATA = 3
+    EPILOGUE = 4
+    COMPLETE = 5

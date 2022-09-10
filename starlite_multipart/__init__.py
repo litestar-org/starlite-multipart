@@ -1,3 +1,4 @@
+from starlite_multipart.datastructures import UploadFile
 from starlite_multipart.decoder import MultipartDecoder, RequestEntityTooLarge
 from starlite_multipart.encoder import MultipartEncoder
 from starlite_multipart.events import (
@@ -8,6 +9,7 @@ from starlite_multipart.events import (
     MultipartMessageEvent,
     PreambleEvent,
 )
+from starlite_multipart.parser import MultipartFormDataParser
 from starlite_multipart.utils import parse_options_header
 
 __all__ = [
@@ -17,8 +19,10 @@ __all__ = [
     "FileEvent",
     "MultipartDecoder",
     "MultipartEncoder",
+    "MultipartFormDataParser",
     "MultipartMessageEvent",
     "PreambleEvent",
     "RequestEntityTooLarge",
+    "UploadFile",
     "parse_options_header",
 ]

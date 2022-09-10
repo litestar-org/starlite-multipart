@@ -1,11 +1,44 @@
+"""The contents of this file incorporate code adapted from
+https://github.com/pallets/werkzeug.
+
+Copyright 2007 Pallets
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1.  Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+2.  Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+
+3.  Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
+
 import re
-from typing import Optional
+from typing import Optional, Union
 
 from starlite_multipart.constants import (
     BLANK_LINE_RE,
     LINE_BREAK,
     SEARCH_BUFFER_LENGTH,
-    State,
+    ProcessingStage,
 )
 from starlite_multipart.events import (
     DataEvent,
@@ -29,7 +62,7 @@ class RequestEntityTooLarge(Exception):
 class MultipartDecoder:
     __slots__ = (
         "buffer",
-        "max_size",
+        "max_file_size",
         "processing_stage",
         "message_boundary",
         "search_position",
@@ -39,35 +72,39 @@ class MultipartDecoder:
 
     def __init__(
         self,
-        boundary: bytes,
-        max_size: Optional[int] = None,
+        message_boundary: Union[bytes, str],
+        max_file_size: Optional[int] = None,
     ) -> None:
         """A decoder for multipart messages.
 
         Args:
-            boundary: The message message_boundary as specified by [RFC7578][https://www.rfc-editor.org/rfc/rfc7578]
-            max_size: Maximum number of bytes allowed for the message.
+            message_boundary: The message message_boundary as specified by [RFC7578][https://www.rfc-editor.org/rfc/rfc7578]
+            max_file_size: Maximum number of bytes allowed for the message.
         """
         self.buffer = bytearray()
-        self.max_size = max_size
-        self.processing_stage = State.PREAMBLE
-        self.message_boundary = boundary
+        self.max_file_size = max_file_size
+        self.processing_stage = ProcessingStage.PREAMBLE
         self.search_position = 0
+        self.message_boundary = (
+            message_boundary if isinstance(message_boundary, bytes) else message_boundary.encode("latin-1")
+        )
 
         # The preamble must end with a message_boundary where the message_boundary is prefixed by a line break, RFC2046.
         self.preamble_re = re.compile(
-            rb"%s?--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)" % (LINE_BREAK, re.escape(boundary), LINE_BREAK, LINE_BREAK),
+            rb"%s?--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)"
+            % (LINE_BREAK, re.escape(self.message_boundary), LINE_BREAK, LINE_BREAK),
             re.MULTILINE,
         )
         # A message_boundary must include a line break prefix and suffix, and may include trailing whitespace.
         self.boundary_re = re.compile(
-            rb"%s--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)" % (LINE_BREAK, re.escape(boundary), LINE_BREAK, LINE_BREAK),
+            rb"%s--%s(--[^\S\n\r]*%s?|[^\S\n\r]*%s)"
+            % (LINE_BREAK, re.escape(self.message_boundary), LINE_BREAK, LINE_BREAK),
             re.MULTILINE,
         )
 
     def __call__(self, data: Optional[bytes] = None) -> None:
         if data:
-            if self.max_size is not None and len(self.buffer) + len(data) > self.max_size:
+            if self.max_file_size is not None and len(self.buffer) + len(data) > self.max_file_size:
                 raise RequestEntityTooLarge()
             self.buffer.extend(data)
 
@@ -75,9 +112,9 @@ class MultipartDecoder:
         match = self.preamble_re.search(self.buffer, self.search_position)
         if match is not None:
             if match.group(1).startswith(b"--"):
-                self.processing_stage = State.EPILOGUE
+                self.processing_stage = ProcessingStage.EPILOGUE
             else:
-                self.processing_stage = State.PART
+                self.processing_stage = ProcessingStage.PART
 
             data = bytes(self.buffer[: match.start()])
             del self.buffer[: match.end()]
@@ -111,9 +148,9 @@ class MultipartDecoder:
         match = self.boundary_re.search(self.buffer) if self.buffer.find(b"--" + self.message_boundary) != -1 else None
         if match is not None:
             if match.group(1).startswith(b"--"):
-                self.processing_stage = State.EPILOGUE
+                self.processing_stage = ProcessingStage.EPILOGUE
             else:
-                self.processing_stage = State.PART
+                self.processing_stage = ProcessingStage.PART
             data = bytes(self.buffer[: match.start()])
             more_data = False
             del self.buffer[: match.end()]
@@ -133,10 +170,10 @@ class MultipartDecoder:
         Returns:
             An optional event instance, depending on the processing_stage of the message processing.
         """
-        if self.processing_stage == State.COMPLETE:
+        if self.processing_stage == ProcessingStage.COMPLETE:
             return None
 
-        if self.processing_stage == State.PREAMBLE:
+        if self.processing_stage == ProcessingStage.PREAMBLE:
             event = self._process_preamble()
             if event:
                 self.search_position = 0
@@ -144,19 +181,19 @@ class MultipartDecoder:
                 self.search_position = max(0, len(self.buffer) - len(self.message_boundary) - SEARCH_BUFFER_LENGTH)
             return event
 
-        if self.processing_stage == State.PART:
+        if self.processing_stage == ProcessingStage.PART:
             event = self._process_part()
             if event:
                 self.search_position = 0
-                self.processing_stage = State.DATA
+                self.processing_stage = ProcessingStage.DATA
             else:
                 self.search_position = max(0, len(self.buffer) - SEARCH_BUFFER_LENGTH)
             return event
 
-        if self.processing_stage == State.DATA:
+        if self.processing_stage == ProcessingStage.DATA:
             return self._process_data()
 
         event = EpilogueEvent(data=bytes(self.buffer))
         del self.buffer[:]
-        self.processing_stage = State.COMPLETE
+        self.processing_stage = ProcessingStage.COMPLETE
         return event

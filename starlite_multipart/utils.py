@@ -103,8 +103,8 @@ def unquote_header_value(value: str, is_filename: bool = False) -> str:
 
 
 def parse_options_header(value: Optional[str]) -> Tuple[str, Dict[str, str]]:
-    """Parses a 'Content-Disposition' header, returning the header value and
-    any options as a dictionary.
+    """Parses a 'Content-Type' or 'Content-Disposition' header, returning the
+    header value and any options as a dictionary.
 
     Args:
         value: An optional header string.
