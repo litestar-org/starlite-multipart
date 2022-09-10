@@ -1,3 +1,4 @@
+"""Tests in this file have been adapted from werkzeug."""
 from starlite_multipart import MultipartDecoder, MultipartEncoder
 from starlite_multipart.events import (
     DataEvent,
