@@ -61,19 +61,18 @@ class RequestEntityTooLarge(Exception):
 
 class MultipartDecoder:
     __slots__ = (
-        "buffer",
-        "max_file_size",
-        "processing_stage",
-        "message_boundary",
-        "search_position",
-        "preamble_re",
         "boundary_re",
+        "buffer",
+        "charset",
+        "max_file_size",
+        "message_boundary",
+        "preamble_re",
+        "processing_stage",
+        "search_position",
     )
 
     def __init__(
-        self,
-        message_boundary: Union[bytes, str],
-        max_file_size: Optional[int] = None,
+        self, message_boundary: Union[bytes, str], max_file_size: Optional[int] = None, charset: str = "utf-8"
     ) -> None:
         """A decoder for multipart messages.
 
@@ -82,6 +81,7 @@ class MultipartDecoder:
             max_file_size: Maximum number of bytes allowed for the message.
         """
         self.buffer = bytearray()
+        self.charset = charset
         self.max_file_size = max_file_size
         self.processing_stage = ProcessingStage.PREAMBLE
         self.search_position = 0
@@ -124,7 +124,7 @@ class MultipartDecoder:
     def _process_part(self) -> Optional[MultipartMessageEvent]:
         match = BLANK_LINE_RE.search(self.buffer, self.search_position)
         if match is not None:
-            headers = parse_headers(self.buffer[: match.start()])
+            headers = parse_headers(self.buffer[: match.start()], charset=self.charset)
             del self.buffer[: match.end()]
 
             content_disposition_header = headers.get("Content-Disposition") or headers.get("content-disposition")
