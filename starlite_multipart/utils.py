@@ -65,12 +65,13 @@ def get_buffer_last_newline(buffer: bytearray) -> int:
     return min(last_nl, last_cr)
 
 
-def parse_headers(data: bytes) -> Dict[str, str]:
+def parse_headers(data: bytes, charset: str = "utf-8") -> Dict[str, str]:
     """Given a message byte string, parse the headers component of it and
     return a dictionary of normalized key/value pairs.
 
     Args:
         data: A byte string.
+        charset: Encoding charset used
 
     Returns:
         A string / string dictionary of parsed values.
@@ -78,7 +79,7 @@ def parse_headers(data: bytes) -> Dict[str, str]:
     data = RFC2231_HEADER_CONTINUATION_RE.sub(b" ", data)
 
     headers: Dict[str, str] = {}
-    for name, value in [line.decode("latin-1").split(":", 1) for line in data.splitlines() if line.strip() != b""]:
+    for name, value in [line.decode(charset).split(":", 1) for line in data.splitlines() if line.strip() != b""]:
         headers[name.strip()] = value.strip()
 
     return headers

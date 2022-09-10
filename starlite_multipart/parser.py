@@ -24,11 +24,13 @@ class MultipartFormDataParser:
             max_file_size: Max file size allowed.
             charset: Charset used to encode the data.
         """
-        _, options = parse_options_header(headers["Content-Type"])
+        _, options = parse_options_header(headers.get("Content-Type", "") or headers.get("content-type", ""))
         self.headers = headers
         self.stream = stream
-        self.decoder = MultipartDecoder(message_boundary=options["boundary"], max_file_size=max_file_size)
         self.charset = options.get("charset", charset)
+        self.decoder = MultipartDecoder(
+            message_boundary=options.get("boundary", ""), max_file_size=max_file_size, charset=charset
+        )
 
     async def _parse_chunk(self) -> List[Tuple[str, Union[str, UploadFile]]]:
         """Parses a chunk into a list of items.
