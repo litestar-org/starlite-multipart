@@ -1,7 +1,7 @@
-site_name: <name>
-repo_url: https://github.com/starlite-api/<repo>
-repo_name: starlite-api/<repo>
-site_url: https://starlite-api.github.io/<project>
+site_name: Starlite Multipart
+repo_url: https://github.com/starlite-api/starlite-multipart
+repo_name: starlite-api/starlite-multipart
+site_url: https://starlite-api.github.io/starlite-multipart
 nav:
   - index.md
   - Reference: reference/
@@ -47,7 +47,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/X3FJqy8d2j
     - icon: fontawesome/brands/github
-      link: https://github.com/starlite-api/<repo>
+      link: https://github.com/starlite-api/starlite-multipart
 extra_css:
   - css/extra.css
 plugins:
