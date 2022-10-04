@@ -147,7 +147,7 @@ def test_multipart_request_files(tmpdir: Any, test_client_factory: Callable[[Any
             "test": {
                 "filename": "test.txt",
                 "content": "<file content>",
-                "content_type": "",
+                "content_type": "text/plain",
             }
         }
 
@@ -187,7 +187,7 @@ def test_multipart_request_multiple_files(tmpdir: Any, test_client_factory: Call
             "test1": {
                 "filename": "test1.txt",
                 "content": "<file1 content>",
-                "content_type": "",
+                "content_type": "text/plain",
             },
             "test2": {
                 "filename": "test2.txt",
@@ -224,12 +224,9 @@ def test_multipart_request_multiple_files_with_headers(
                 "content": "<file2 content>",
                 "content_type": "text/plain",
                 "headers": [
-                    [
-                        "Content-Disposition",
-                        'form-data; name="test2"; filename="test2.txt"',
-                    ],
-                    ["Content-Type", "text/plain"],
+                    ["Content-Disposition", 'form-data; name="test2"; filename="test2.txt"'],
                     ["x-custom", "f2"],
+                    ["Content-Type", "text/plain"],
                 ],
             },
         }
@@ -248,7 +245,7 @@ def test_multi_items(tmpdir: Any, test_client_factory: Callable[[Any], TestClien
     with open(path1, "rb") as f1, open(path2, "rb") as f2:
         response = client.post(
             "/",
-            data=[("test1", "abc")],
+            data={"test1": "abc"},
             files=[("test1", f1), ("test1", ("test2.txt", f2, "text/plain"))],
         )
         assert response.json() == {
@@ -257,7 +254,7 @@ def test_multi_items(tmpdir: Any, test_client_factory: Callable[[Any], TestClien
                 {
                     "filename": "test1.txt",
                     "content": "<file1 content>",
-                    "content_type": "",
+                    "content_type": "text/plain",
                 },
                 {
                     "filename": "test2.txt",
