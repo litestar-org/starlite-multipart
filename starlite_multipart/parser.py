@@ -62,7 +62,10 @@ class MultipartFormDataParser:
                 if upload_file is None:
                     data.extend(event.data)
                     if not event.more_data:
-                        items.append((field_name, data.decode(self.charset)))
+                        try:
+                            items.append((field_name, data.decode(self.charset)))
+                        except UnicodeDecodeError:
+                            items.append((field_name, data.decode("latin-1")))
                         data.clear()
                 else:
                     await upload_file.write(event.data)

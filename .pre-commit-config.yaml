@@ -24,7 +24,7 @@ repos:
     hooks:
       - id: isort
   - repo: https://github.com/psf/black
-    rev: 22.8.0
+    rev: 22.10.0
     hooks:
       - id: black
         args: [--config=./pyproject.toml]
@@ -83,7 +83,7 @@ repos:
         additional_dependencies: [mkdocs_gen_files, anyio, starlette]
         exclude: "docs"
   - repo: https://github.com/dosisod/refurb
-    rev: v1.2.0
+    rev: v1.3.0
     hooks:
       - id: refurb
         exclude: "test_*|docs"
@@ -101,7 +101,7 @@ repos:
       - id: mypy
         additional_dependencies: [mkdocs_gen_files, anyio, starlette]
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.273
+    rev: v1.1.274
     hooks:
       - id: pyright
         additional_dependencies: [mkdocs_gen_files, pytest, anyio, starlette]

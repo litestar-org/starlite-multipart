@@ -1,6 +1,7 @@
 """Tests in this file have been adapted from Starlette."""
 
 import os
+from os.path import abspath, dirname, join
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Tuple, Union
 
 import pytest
@@ -55,7 +56,7 @@ def test_client_factory() -> Callable[[Any], TestClient]:
 FORCE_MULTIPART = ForceMultipartDict()
 
 
-async def app(scope: "Scope", receive: "Receive", send: "Send") -> None:
+async def standard_app(scope: "Scope", receive: "Receive", send: "Send") -> None:
     request = Request(scope, receive)
     data = await request.form()
     output = {}
@@ -130,7 +131,7 @@ async def app_read_body(scope: "Scope", receive: "Receive", send: "Send") -> Non
 
 
 def test_multipart_request_data(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post("/", data={"some": "data"}, files=FORCE_MULTIPART)
     assert response.json() == {"some": "data"}
 
@@ -140,7 +141,7 @@ def test_multipart_request_files(tmpdir: Any, test_client_factory: Callable[[Any
     with open(path, "wb") as file:
         file.write(b"<file content>")
 
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     with open(path, "rb") as f:
         response = client.post("/", files={"test": f})
         assert response.json() == {
@@ -159,7 +160,7 @@ def test_multipart_request_files_with_content_type(
     with open(path, "wb") as file:
         file.write(b"<file content>")
 
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     with open(path, "rb") as f:
         response = client.post("/", files={"test": ("test.txt", f, "text/plain")})
         assert response.json() == {
@@ -180,7 +181,7 @@ def test_multipart_request_multiple_files(tmpdir: Any, test_client_factory: Call
     with open(path2, "wb") as file:
         file.write(b"<file2 content>")
 
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     with open(path1, "rb") as f1, open(path2, "rb") as f2:
         response = client.post("/", files={"test1": f1, "test2": ("test2.txt", f2, "text/plain")})
         assert response.json() == {
@@ -266,7 +267,7 @@ def test_multi_items(tmpdir: Any, test_client_factory: Callable[[Any], TestClien
 
 
 def test_multipart_request_mixed_files_and_data(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post(
         "/",
         data=(
@@ -299,7 +300,7 @@ def test_multipart_request_mixed_files_and_data(test_client_factory: Callable[[A
 
 
 def test_multipart_request_with_charset_for_filename(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post(
         "/",
         data=(
@@ -322,7 +323,7 @@ def test_multipart_request_with_charset_for_filename(test_client_factory: Callab
 
 
 def test_multipart_request_without_charset_for_filename(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post(
         "/",
         data=(
@@ -345,7 +346,7 @@ def test_multipart_request_without_charset_for_filename(test_client_factory: Cal
 
 
 def test_multipart_request_with_encoded_value(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post(
         "/",
         data=(
@@ -361,7 +362,7 @@ def test_multipart_request_with_encoded_value(test_client_factory: Callable[[Any
 
 
 def test_no_request_data(test_client_factory: Callable[[Any], TestClient]) -> None:
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post("/")
     assert response.json() == {}
 
@@ -385,7 +386,7 @@ def test_postman_multipart_form_data(test_client_factory: Callable[[Any], TestCl
         "content-length": "2455",
     }
 
-    client = test_client_factory(app)
+    client = test_client_factory(standard_app)
     response = client.post("/", data=postman_body, headers=postman_headers)
     assert response.json() == {
         "attributes": {
@@ -399,3 +400,33 @@ def test_postman_multipart_form_data(test_client_factory: Callable[[Any], TestCl
             "content_type": "application/octet-stream",
         },
     }
+
+
+def test_image_upload(test_client_factory: Callable[[Any], TestClient]) -> None:
+    async def test_app(scope: "Scope", receive: "Receive", send: "Send") -> None:
+        request = Request(scope, receive)
+        data = await request.form()
+        output: Dict[str, list] = {}  # type: ignore
+        for key, value in data.multi_items():
+            if key not in output:
+                output[key] = []
+            if isinstance(value, UploadFile):
+                content = await value.read()
+                output[key].append(
+                    {
+                        "filename": value.filename,
+                        "content": content.decode("latin-1"),
+                        "content_type": value.content_type,
+                    }
+                )
+            else:
+                output[key].append(value)
+        await request.close()
+        response = JSONResponse(output)
+        await response(scope, receive, send)
+
+    client = test_client_factory(test_app)
+
+    with open(join(dirname(abspath(__file__)), "flower.jpeg"), "rb") as f:
+        data = f.read()
+        client.post("http://localhost:8000/", files={"flower": data})

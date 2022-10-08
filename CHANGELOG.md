@@ -7,3 +7,7 @@
 [1.1.0]
 
 - add support for configurable `charset` in decoder.
+
+[1.1.1]
+
+- fix UnicodeDecodeError for file uploads.
