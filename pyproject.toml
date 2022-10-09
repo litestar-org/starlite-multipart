@@ -23,6 +23,7 @@ classifiers = [
     "Topic :: Software Development",
     "Typing :: Typed",
 ]
+readme = "README.md"
 include = ["CHANGELOG.md"]
 packages = [
     { include = "starlite_multipart" },
