@@ -28,7 +28,6 @@ asdasd
         "utf-8"
     )
     decoder(data)
-    decoder(None)
     events = [decoder.next_event()]
     while not isinstance(events[-1], EpilogueEvent) and len(events) < 6:
         events.append(decoder.next_event())
@@ -75,5 +74,4 @@ def test_chunked_boundaries() -> None:
     event = decoder.next_event()
     assert isinstance(event, DataEvent)
     assert not event.more_data
-    decoder(None)
     assert isinstance(decoder.next_event(), EpilogueEvent)

@@ -2,7 +2,7 @@ from typing import AsyncGenerator, List, Mapping, Optional, Tuple, Union
 
 from starlite_multipart.datastructures import UploadFile
 from starlite_multipart.decoder import MultipartDecoder
-from starlite_multipart.events import DataEvent, FieldEvent, FileEvent
+from starlite_multipart.events import DataEvent, EpilogueEvent, FieldEvent, FileEvent
 from starlite_multipart.utils import parse_options_header
 
 
@@ -43,7 +43,10 @@ class MultipartFormDataParser:
         field_name = ""
         data = bytearray()
         upload_file: Optional[UploadFile] = None
-        while event := self.decoder.next_event():
+        while True:
+            event = self.decoder.next_event()
+            if event is None or isinstance(event, EpilogueEvent):
+                break
             if isinstance(event, FieldEvent):
                 field_name = event.name
             elif isinstance(event, FileEvent):

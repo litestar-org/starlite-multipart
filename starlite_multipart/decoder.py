@@ -102,7 +102,7 @@ class MultipartDecoder:
             re.MULTILINE,
         )
 
-    def __call__(self, data: Optional[bytes] = None) -> None:
+    def __call__(self, data: bytes) -> None:
         if data:
             if self.max_file_size is not None and len(self.buffer) + len(data) > self.max_file_size:
                 raise RequestEntityTooLarge()
