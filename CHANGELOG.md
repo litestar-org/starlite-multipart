@@ -11,3 +11,7 @@
 [1.1.1]
 
 - fix UnicodeDecodeError for file uploads.
+
+[1.2.0]
+
+- fix large file parsing.

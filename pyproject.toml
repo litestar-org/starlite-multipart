@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "starlite-multipart"
-version = "1.1.1"
+version = "1.2.0"
 description = "Toolkit for working with multipart/formdata messages."
 authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
 maintainers = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>", "Peter Schutt <peter.github@proton.me>", "Cody Fincher <cody.fincher@gmail.com>"]
