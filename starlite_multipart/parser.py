@@ -32,7 +32,7 @@ class MultipartFormDataParser:
             message_boundary=options.get("boundary", ""), max_file_size=max_file_size, charset=charset
         )
 
-    async def _parse_chunk(self) -> List[Tuple[str, Union[str, UploadFile]]]:
+    async def parse(self) -> List[Tuple[str, Union[str, UploadFile]]]:
         """Parses a chunk into a list of items.
 
         Returns:
@@ -77,8 +77,6 @@ class MultipartFormDataParser:
         Returns:
             A list of tuples, each containing the field name and its value - either a string or an upload file datum.
         """
-        parse_result: List[Tuple[str, Union[str, UploadFile]]] = []
         async for chunk in self.stream:
             self.decoder(chunk)
-            parse_result.extend(await self._parse_chunk())
-        return parse_result
+        return await self.parse()
