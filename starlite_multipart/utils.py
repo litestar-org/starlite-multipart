@@ -80,7 +80,7 @@ def parse_headers(data: bytes, charset: str = "utf-8") -> Dict[str, str]:
 
     headers: Dict[str, str] = {}
     for name, value in [line.decode(charset).split(":", 1) for line in data.splitlines() if line.strip() != b""]:
-        headers[name.strip()] = value.strip()
+        headers[name.strip().lower()] = value.strip()
 
     return headers
 

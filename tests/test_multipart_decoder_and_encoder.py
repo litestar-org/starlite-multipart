@@ -36,13 +36,13 @@ asdasd
         PreambleEvent(data=b""),
         FieldEvent(
             name="fname",
-            headers={"Content-Disposition": 'form-data; name="fname"'},
+            headers={"content-disposition": 'form-data; name="fname"'},
         ),
         DataEvent(data="ß∑œß∂ƒå∂".encode(), more_data=False),
         FileEvent(
             name="lname",
             filename="bob",
-            headers={"Content-Disposition": 'form-data; name="lname"; filename="bob"'},
+            headers={"content-disposition": 'form-data; name="lname"; filename="bob"'},
         ),
         DataEvent(data=b"asdasd", more_data=False),
         EpilogueEvent(data=b"    "),

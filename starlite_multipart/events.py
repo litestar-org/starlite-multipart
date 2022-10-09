@@ -1,21 +1,16 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Union
 
 
 @dataclass
-class MultipartMessageEvent:
-    __slots__ = ()
-
-
-@dataclass
-class PreambleEvent(MultipartMessageEvent):
+class PreambleEvent:
     __slots__ = ("data",)
 
     data: bytes
 
 
 @dataclass
-class FieldEvent(MultipartMessageEvent):
+class FieldEvent:
     __slots__ = (
         "name",
         "headers",
@@ -26,7 +21,7 @@ class FieldEvent(MultipartMessageEvent):
 
 
 @dataclass
-class FileEvent(MultipartMessageEvent):
+class FileEvent:
     __slots__ = (
         "name",
         "headers",
@@ -39,7 +34,7 @@ class FileEvent(MultipartMessageEvent):
 
 
 @dataclass
-class DataEvent(MultipartMessageEvent):
+class DataEvent:
     __slots__ = (
         "data",
         "more_data",
@@ -50,6 +45,10 @@ class DataEvent(MultipartMessageEvent):
 
 
 @dataclass
-class EpilogueEvent(MultipartMessageEvent):
+class EpilogueEvent:
     __slots__ = ("data",)
+
     data: bytes
+
+
+MultipartMessageEvent = Union[PreambleEvent, FileEvent, FieldEvent, DataEvent, EpilogueEvent]

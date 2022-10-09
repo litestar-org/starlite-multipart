@@ -14,6 +14,8 @@ from starlite_multipart import MultipartFormDataParser
 from starlite_multipart.datastructures import UploadFile
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from starlette.types import Receive, Scope, Send
 
 
@@ -225,9 +227,9 @@ def test_multipart_request_multiple_files_with_headers(
                 "content": "<file2 content>",
                 "content_type": "text/plain",
                 "headers": [
-                    ["Content-Disposition", 'form-data; name="test2"; filename="test2.txt"'],
+                    ["content-disposition", 'form-data; name="test2"; filename="test2.txt"'],
                     ["x-custom", "f2"],
-                    ["Content-Type", "text/plain"],
+                    ["content-type", "text/plain"],
                 ],
             },
         }
@@ -415,7 +417,7 @@ def test_image_upload(test_client_factory: Callable[[Any], TestClient]) -> None:
                 output[key].append(
                     {
                         "filename": value.filename,
-                        "content": content.decode("latin-1"),
+                        "content_len": len(content),
                         "content_type": value.content_type,
                     }
                 )
@@ -430,3 +432,33 @@ def test_image_upload(test_client_factory: Callable[[Any], TestClient]) -> None:
     with open(join(dirname(abspath(__file__)), "flower.jpeg"), "rb") as f:
         data = f.read()
         client.post("http://localhost:8000/", files={"flower": data})
+
+
+def test_large_file_upload(test_client_factory: Callable[[Any], TestClient], tmp_path: "Path") -> None:
+    async def test_app(scope: "Scope", receive: "Receive", send: "Send") -> None:
+        request = Request(scope, receive)
+        data = await request.form()
+        output: Dict[str, list] = {}  # type: ignore
+        for key, value in data.multi_items():
+            if key not in output:
+                output[key] = []
+            if isinstance(value, UploadFile):
+                content = await value.read()
+                output[key].append(
+                    {
+                        "filename": value.filename,
+                        "content_len": len(content),
+                        "content_type": value.content_type,
+                    }
+                )
+            else:
+                output[key].append(value)
+        await request.close()
+        response = JSONResponse(output)
+        await response(scope, receive, send)
+
+    client = test_client_factory(test_app)
+
+    f = tmp_path / "target.txt"
+    f.write_bytes(os.urandom(4096000))
+    client.post("http://localhost:8000/", files={"tmp": f.read_bytes()})
